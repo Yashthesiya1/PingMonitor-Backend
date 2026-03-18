@@ -4,6 +4,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.database import engine, Base
+from app.models import *  # noqa: F401, F403 — import all models so tables are registered
 from app.api.v1.auth import router as auth_router
 from app.api.v1.endpoints import router as endpoints_router
 from app.api.v1.notifications import router as notifications_router
@@ -12,9 +14,13 @@ from app.api.v1.admin import router as admin_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print(f"Starting {settings.APP_NAME} API...")
+    # Create all tables on startup
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    print(f"{settings.APP_NAME} API started — tables created")
     yield
-    print(f"Shutting down {settings.APP_NAME} API...")
+    await engine.dispose()
+    print(f"{settings.APP_NAME} API shut down")
 
 
 app = FastAPI(

@@ -52,5 +52,5 @@ class ActivityLog(Base):
     action: Mapped[str] = mapped_column(String(50), nullable=False)
     resource_type: Mapped[str] = mapped_column(String(30), nullable=False)
     resource_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    extra_data: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
