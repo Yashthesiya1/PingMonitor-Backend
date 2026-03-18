@@ -1,0 +1,40 @@
+# FastAPI & Server
+fastapi==0.115.12
+uvicorn[standard]==0.34.3
+python-multipart==0.0.20
+
+# Database
+sqlalchemy[asyncio]==2.0.41
+asyncpg==0.30.0
+alembic==1.15.2
+
+# Redis & Celery
+redis==5.3.0
+celery[redis]==5.5.2
+
+# Auth
+pyjwt==2.10.1
+bcrypt==4.3.0
+python-jose[cryptography]==3.4.0
+passlib[bcrypt]==1.7.4
+
+# HTTP Client (async)
+httpx==0.28.1
+
+# Email
+resend==2.7.0
+
+# Validation & Config
+pydantic==2.11.5
+pydantic-settings==2.9.1
+
+# Stripe
+stripe==12.2.0
+
+# CORS
+starlette==0.46.2
+
+# Testing
+pytest==8.4.1
+pytest-asyncio==1.0.0
+httpx==0.28.1
