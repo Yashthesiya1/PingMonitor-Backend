@@ -3,11 +3,11 @@ from typing import List
 
 
 class Settings(BaseSettings):
-    # Database
-    DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost:5432/pingmonitor"
+    # Database — SQLite for dev, PostgreSQL for production
+    DATABASE_URL: str = "sqlite+aiosqlite:///./pingmonitor.db"
 
-    # Redis
-    REDIS_URL: str = "redis://localhost:6379/0"
+    # Redis (optional — not needed for dev)
+    REDIS_URL: str = ""
 
     # JWT
     JWT_SECRET_KEY: str = "change-me-in-production"
