@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
@@ -169,3 +170,99 @@ async def get_incidents(
         .order_by(Incident.started_at.desc())
     )
     return result.scalars().all()
+
+
+# --- User Metrics ---
+
+class UserMetrics(BaseModel):
+    total_endpoints: int
+    active_endpoints: int
+    total_checks: int
+    total_up: int
+    total_down: int
+    uptime_percentage: float
+    avg_response_ms: float
+    total_incidents: int
+    open_incidents: int
+
+
+@router.get("/stats/overview", response_model=UserMetrics)
+async def get_user_metrics(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    # Endpoint counts
+    total_ep = (await db.execute(
+        select(func.count()).where(Endpoint.user_id == user.id)
+    )).scalar() or 0
+
+    active_ep = (await db.execute(
+        select(func.count()).where(Endpoint.user_id == user.id, Endpoint.is_active == True)
+    )).scalar() or 0
+
+    # Get user's endpoint IDs
+    ep_ids_result = await db.execute(
+        select(Endpoint.id).where(Endpoint.user_id == user.id)
+    )
+    ep_ids = [str(r) for r in ep_ids_result.scalars().all()]
+
+    if not ep_ids:
+        return UserMetrics(
+            total_endpoints=0, active_endpoints=0, total_checks=0,
+            total_up=0, total_down=0, uptime_percentage=0,
+            avg_response_ms=0, total_incidents=0, open_incidents=0,
+        )
+
+    # Check counts
+    total_checks = (await db.execute(
+        select(func.count()).where(
+            EndpointCheck.endpoint_id.in_(ep_ids),
+            EndpointCheck.checked_at >= since,
+        )
+    )).scalar() or 0
+
+    total_up = (await db.execute(
+        select(func.count()).where(
+            EndpointCheck.endpoint_id.in_(ep_ids),
+            EndpointCheck.checked_at >= since,
+            EndpointCheck.is_up == True,
+        )
+    )).scalar() or 0
+
+    total_down = total_checks - total_up
+
+    uptime_pct = (total_up / total_checks * 100) if total_checks > 0 else 0
+
+    avg_resp = (await db.execute(
+        select(func.avg(EndpointCheck.response_time_ms)).where(
+            EndpointCheck.endpoint_id.in_(ep_ids),
+            EndpointCheck.checked_at >= since,
+            EndpointCheck.response_time_ms.isnot(None),
+        )
+    )).scalar() or 0
+
+    # Incidents
+    total_incidents = (await db.execute(
+        select(func.count()).where(Incident.user_id == user.id)
+    )).scalar() or 0
+
+    open_incidents = (await db.execute(
+        select(func.count()).where(
+            Incident.user_id == user.id,
+            Incident.is_resolved == False,
+        )
+    )).scalar() or 0
+
+    return UserMetrics(
+        total_endpoints=total_ep,
+        active_endpoints=active_ep,
+        total_checks=total_checks,
+        total_up=total_up,
+        total_down=total_down,
+        uptime_percentage=round(uptime_pct, 1),
+        avg_response_ms=round(float(avg_resp), 1),
+        total_incidents=total_incidents,
+        open_incidents=open_incidents,
+    )

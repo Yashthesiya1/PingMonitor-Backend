@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.database import get_db
-from app.models.user import User, Session as SessionModel, ApiKey
+from app.models.user import User, Session as SessionModel, ApiKey, PasswordReset
 from app.schemas.auth import (
     RegisterRequest,
     LoginRequest,
@@ -13,6 +13,8 @@ from app.schemas.auth import (
     RefreshRequest,
     UserResponse,
     UpdateProfileRequest,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
     ApiKeyCreateRequest,
     ApiKeyResponse,
 )
@@ -231,3 +233,60 @@ async def delete_api_key(
     await db.delete(api_key)
     await db.commit()
     return {"message": "API key deleted"}
+
+
+# --- Forgot / Reset Password ---
+
+@router.post("/forgot-password")
+async def forgot_password(body: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).where(User.email == body.email))
+    user = result.scalar_one_or_none()
+
+    # Always return success to prevent email enumeration
+    if not user:
+        return {"message": "If the email exists, a reset link has been sent"}
+
+    import secrets
+    raw_token = secrets.token_urlsafe(48)
+    token_hash_val = hash_token(raw_token)
+
+    reset = PasswordReset(
+        user_id=user.id,
+        token_hash=token_hash_val,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    db.add(reset)
+    await db.commit()
+
+    # TODO: Send email with reset link containing raw_token
+    # For now, return token in dev mode
+    return {"message": "If the email exists, a reset link has been sent", "reset_token": raw_token}
+
+
+@router.post("/reset-password")
+async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    token_hash_val = hash_token(body.token)
+
+    result = await db.execute(
+        select(PasswordReset).where(
+            PasswordReset.token_hash == token_hash_val,
+            PasswordReset.is_used == False,
+            PasswordReset.expires_at > datetime.now(timezone.utc),
+        )
+    )
+    reset = result.scalar_one_or_none()
+
+    if not reset:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    # Update password
+    user_result = await db.execute(select(User).where(User.id == reset.user_id))
+    user = user_result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=400, detail="User not found")
+
+    user.password_hash = hash_password(body.password)
+    reset.is_used = True
+    await db.commit()
+
+    return {"message": "Password reset successfully"}
