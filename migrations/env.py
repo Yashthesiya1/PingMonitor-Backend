@@ -6,10 +6,16 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 
+# Load our app config (reads .env automatically)
+from app.config import settings
 from app.database import Base
-from app.models import *  # noqa: F401, F403 — import all models so Alembic sees them
+from app.models import *  # noqa: F401, F403 — import all models
 
 config = context.config
+
+# Set the DB URL from our .env (not from alembic.ini)
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
@@ -17,6 +23,7 @@ target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
+    """Run migrations without a database connection."""
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
@@ -35,6 +42,7 @@ def do_run_migrations(connection):
 
 
 async def run_async_migrations() -> None:
+    """Run migrations with an async database connection."""
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
