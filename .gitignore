@@ -4,9 +4,11 @@ __pycache__/
 dist/
 build/
 .env
+.env.*
 venv/
 .venv/
 *.db
 .pytest_cache/
 .coverage
 htmlcov/
+pingmonitor.db
