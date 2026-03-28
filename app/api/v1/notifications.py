@@ -1,3 +1,4 @@
+import json
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,20 +31,35 @@ class ChannelUpdate(BaseModel):
 
 
 class ChannelResponse(BaseModel):
-    id: UUID
+    id: str
     channel_type: str
     name: str
     config: dict
     is_active: bool
     created_at: datetime
 
-    model_config = {"from_attributes": True}
+    @classmethod
+    def from_model(cls, channel):
+        config = channel.config
+        if isinstance(config, str):
+            try:
+                config = json.loads(config)
+            except Exception:
+                config = {}
+        return cls(
+            id=str(channel.id),
+            channel_type=channel.channel_type,
+            name=channel.name,
+            config=config,
+            is_active=channel.is_active,
+            created_at=channel.created_at,
+        )
 
 
 class NotificationLogResponse(BaseModel):
-    id: UUID
-    endpoint_id: UUID
-    incident_id: UUID | None
+    id: str
+    endpoint_id: str
+    incident_id: str | None
     channel_type: str
     event_type: str
     status: str
@@ -55,7 +71,7 @@ class NotificationLogResponse(BaseModel):
 
 # --- Channels ---
 
-@router.get("/channels", response_model=list[ChannelResponse])
+@router.get("/channels")
 async def list_channels(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -65,10 +81,10 @@ async def list_channels(
         .where(NotificationChannel.user_id == user.id)
         .order_by(NotificationChannel.created_at.desc())
     )
-    return result.scalars().all()
+    return [ChannelResponse.from_model(c).model_dump() for c in result.scalars().all()]
 
 
-@router.post("/channels", response_model=ChannelResponse, status_code=201)
+@router.post("/channels", status_code=201)
 async def create_channel(
     body: ChannelCreate,
     user: User = Depends(get_current_user),
@@ -78,15 +94,15 @@ async def create_channel(
         user_id=user.id,
         channel_type=body.channel_type,
         name=body.name,
-        config=body.config,
+        config=json.dumps(body.config),
     )
     db.add(channel)
     await db.commit()
     await db.refresh(channel)
-    return channel
+    return ChannelResponse.from_model(channel).model_dump()
 
 
-@router.patch("/channels/{channel_id}", response_model=ChannelResponse)
+@router.patch("/channels/{channel_id}")
 async def update_channel(
     channel_id: str,
     body: ChannelUpdate,
@@ -106,13 +122,13 @@ async def update_channel(
     if body.name is not None:
         channel.name = body.name
     if body.config is not None:
-        channel.config = body.config
+        channel.config = json.dumps(body.config)
     if body.is_active is not None:
         channel.is_active = body.is_active
 
     await db.commit()
     await db.refresh(channel)
-    return channel
+    return ChannelResponse.from_model(channel).model_dump()
 
 
 @router.delete("/channels/{channel_id}")
@@ -159,6 +175,14 @@ async def test_channel(
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
 
+    # Parse config from JSON string if needed
+    config = channel.config
+    if isinstance(config, str):
+        try:
+            config = json.loads(config)
+        except Exception:
+            config = {}
+
     try:
         test_msg = f"[TEST] PingMonitor — Test notification for {channel.name}. Your {channel.channel_type} channel is working."
 
@@ -167,7 +191,7 @@ async def test_channel(
             return {"success": True, "message": "Email test (Resend not configured yet)"}
 
         elif channel.channel_type in ("slack", "teams"):
-            url = channel.config.get("webhook_url")
+            url = config.get("webhook_url")
             if not url:
                 raise HTTPException(status_code=400, detail="Webhook URL required")
             async with httpx.AsyncClient() as client:
@@ -176,7 +200,7 @@ async def test_channel(
                 raise HTTPException(status_code=400, detail=f"Webhook returned {resp.status_code}")
 
         elif channel.channel_type == "discord":
-            url = channel.config.get("webhook_url")
+            url = config.get("webhook_url")
             if not url:
                 raise HTTPException(status_code=400, detail="Webhook URL required")
             async with httpx.AsyncClient() as client:
@@ -185,8 +209,8 @@ async def test_channel(
                 raise HTTPException(status_code=400, detail=f"Webhook returned {resp.status_code}")
 
         elif channel.channel_type == "telegram":
-            bot_token = channel.config.get("bot_token")
-            chat_id = channel.config.get("chat_id")
+            bot_token = config.get("bot_token")
+            chat_id = config.get("chat_id")
             if not bot_token or not chat_id:
                 raise HTTPException(status_code=400, detail="Bot token and chat ID required")
             async with httpx.AsyncClient() as client:
@@ -199,14 +223,13 @@ async def test_channel(
                 raise HTTPException(status_code=400, detail=data.get("description", "Telegram error"))
 
         elif channel.channel_type == "webhook":
-            url = channel.config.get("webhook_url")
+            url = config.get("webhook_url")
             if not url:
                 raise HTTPException(status_code=400, detail="Webhook URL required")
             headers = {"Content-Type": "application/json"}
-            if channel.config.get("headers"):
-                import json
+            if config.get("headers"):
                 try:
-                    headers.update(json.loads(channel.config["headers"]))
+                    headers.update(json.loads(config["headers"]) if isinstance(config["headers"], str) else config["headers"])
                 except Exception:
                     pass
             async with httpx.AsyncClient() as client:
@@ -247,9 +270,9 @@ async def notification_history(
 # --- Global Incidents ---
 
 class IncidentResponse(BaseModel):
-    id: UUID
-    endpoint_id: UUID
-    user_id: UUID
+    id: str
+    endpoint_id: str
+    user_id: str
     started_at: datetime
     resolved_at: datetime | None
     is_resolved: bool

@@ -1,5 +1,4 @@
 from pydantic import BaseModel, Field, HttpUrl
-from uuid import UUID
 from datetime import datetime
 
 
@@ -20,8 +19,8 @@ class EndpointUpdate(BaseModel):
 
 
 class EndpointResponse(BaseModel):
-    id: UUID
-    user_id: UUID
+    id: str
+    user_id: str
     name: str
     url: str
     method: str
@@ -36,8 +35,8 @@ class EndpointResponse(BaseModel):
 
 
 class CheckResponse(BaseModel):
-    id: UUID
-    endpoint_id: UUID
+    id: str
+    endpoint_id: str
     status_code: int | None
     response_time_ms: int | None
     is_up: bool
@@ -49,9 +48,9 @@ class CheckResponse(BaseModel):
 
 
 class IncidentResponse(BaseModel):
-    id: UUID
-    endpoint_id: UUID
-    user_id: UUID
+    id: str
+    endpoint_id: str
+    user_id: str
     started_at: datetime
     resolved_at: datetime | None
     is_resolved: bool

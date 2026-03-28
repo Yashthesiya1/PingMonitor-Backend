@@ -26,7 +26,7 @@ class RefreshRequest(BaseModel):
 
 
 class UserResponse(BaseModel):
-    id: UUID
+    id: str
     email: str
     name: str | None
     avatar_url: str | None
@@ -58,7 +58,7 @@ class ApiKeyCreateRequest(BaseModel):
 
 
 class ApiKeyResponse(BaseModel):
-    id: UUID
+    id: str
     name: str
     key_prefix: str
     created_at: datetime
