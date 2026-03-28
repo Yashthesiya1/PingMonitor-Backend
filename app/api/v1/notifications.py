@@ -187,8 +187,11 @@ async def test_channel(
         test_msg = f"[TEST] PingMonitor — Test notification for {channel.name}. Your {channel.channel_type} channel is working."
 
         if channel.channel_type == "email":
-            # TODO: Integrate Resend
-            return {"success": True, "message": "Email test (Resend not configured yet)"}
+            from app.services.email_service import send_test_email
+            success = send_test_email(user.email)
+            if not success:
+                raise HTTPException(status_code=500, detail="Failed to send test email")
+            return {"success": True}
 
         elif channel.channel_type in ("slack", "teams"):
             url = config.get("webhook_url")
