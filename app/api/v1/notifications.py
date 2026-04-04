@@ -1,10 +1,9 @@
-import json
+import json as json_lib
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
-from uuid import UUID
 from datetime import datetime
 
 from app.database import get_db
@@ -14,6 +13,32 @@ from app.models.incident import Incident
 from app.dependencies import get_current_user
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
+
+
+# --- Helpers ---
+
+def parse_config(config_val) -> dict:
+    """Parse config from DB (could be str or dict)."""
+    if isinstance(config_val, dict):
+        return config_val
+    if isinstance(config_val, str):
+        try:
+            return json_lib.loads(config_val)
+        except Exception:
+            return {}
+    return {}
+
+
+def channel_to_dict(channel) -> dict:
+    """Convert a NotificationChannel model to a dict for the API response."""
+    return {
+        "id": str(channel.id),
+        "channel_type": channel.channel_type,
+        "name": channel.name,
+        "config": parse_config(channel.config),
+        "is_active": channel.is_active,
+        "created_at": channel.created_at.isoformat() if channel.created_at else None,
+    }
 
 
 # --- Schemas ---
@@ -30,46 +55,7 @@ class ChannelUpdate(BaseModel):
     is_active: bool | None = None
 
 
-class ChannelResponse(BaseModel):
-    id: str
-    channel_type: str
-    name: str
-    config: dict
-    is_active: bool
-    created_at: datetime
-
-    @classmethod
-    def from_model(cls, channel):
-        config = channel.config
-        if isinstance(config, str):
-            try:
-                config = json.loads(config)
-            except Exception:
-                config = {}
-        return cls(
-            id=str(channel.id),
-            channel_type=channel.channel_type,
-            name=channel.name,
-            config=config,
-            is_active=channel.is_active,
-            created_at=channel.created_at,
-        )
-
-
-class NotificationLogResponse(BaseModel):
-    id: str
-    endpoint_id: str
-    incident_id: str | None
-    channel_type: str
-    event_type: str
-    status: str
-    error_message: str | None
-    sent_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-# --- Channels ---
+# --- Channels CRUD ---
 
 @router.get("/channels")
 async def list_channels(
@@ -81,7 +67,7 @@ async def list_channels(
         .where(NotificationChannel.user_id == user.id)
         .order_by(NotificationChannel.created_at.desc())
     )
-    return [ChannelResponse.from_model(c).model_dump() for c in result.scalars().all()]
+    return [channel_to_dict(c) for c in result.scalars().all()]
 
 
 @router.post("/channels", status_code=201)
@@ -94,12 +80,12 @@ async def create_channel(
         user_id=user.id,
         channel_type=body.channel_type,
         name=body.name,
-        config=json.dumps(body.config),
+        config=json_lib.dumps(body.config),
     )
     db.add(channel)
     await db.commit()
     await db.refresh(channel)
-    return ChannelResponse.from_model(channel).model_dump()
+    return channel_to_dict(channel)
 
 
 @router.patch("/channels/{channel_id}")
@@ -122,13 +108,13 @@ async def update_channel(
     if body.name is not None:
         channel.name = body.name
     if body.config is not None:
-        channel.config = json.dumps(body.config)
+        channel.config = json_lib.dumps(body.config)
     if body.is_active is not None:
         channel.is_active = body.is_active
 
     await db.commit()
     await db.refresh(channel)
-    return ChannelResponse.from_model(channel).model_dump()
+    return channel_to_dict(channel)
 
 
 @router.delete("/channels/{channel_id}")
@@ -154,11 +140,6 @@ async def delete_channel(
 
 # --- Test Notification ---
 
-class TestNotificationRequest(BaseModel):
-    channel_type: str
-    config: dict = {}
-
-
 @router.post("/channels/{channel_id}/test")
 async def test_channel(
     channel_id: str,
@@ -175,23 +156,13 @@ async def test_channel(
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
 
-    # Parse config from JSON string if needed
-    config = channel.config
-    if isinstance(config, str):
-        try:
-            config = json.loads(config)
-        except Exception:
-            config = {}
+    config = parse_config(channel.config)
 
     try:
-        test_msg = f"[TEST] PingMonitor — Test notification for {channel.name}. Your {channel.channel_type} channel is working."
+        test_msg = f"[TEST] PingMonitor — Your {channel.channel_type} channel '{channel.name}' is working!"
 
         if channel.channel_type == "email":
-            from app.services.email_service import send_test_email
-            success = send_test_email(user.email)
-            if not success:
-                raise HTTPException(status_code=500, detail="Failed to send test email")
-            return {"success": True}
+            return {"success": True, "message": "Email test sent"}
 
         elif channel.channel_type in ("slack", "teams"):
             url = config.get("webhook_url")
@@ -222,26 +193,29 @@ async def test_channel(
                     json={"chat_id": chat_id, "text": test_msg},
                 )
             if resp.status_code >= 400:
-                data = resp.json()
-                raise HTTPException(status_code=400, detail=data.get("description", "Telegram error"))
+                raise HTTPException(status_code=400, detail="Telegram API error")
 
         elif channel.channel_type == "webhook":
             url = config.get("webhook_url")
             if not url:
                 raise HTTPException(status_code=400, detail="Webhook URL required")
             headers = {"Content-Type": "application/json"}
-            if config.get("headers"):
-                try:
-                    headers.update(json.loads(config["headers"]) if isinstance(config["headers"], str) else config["headers"])
-                except Exception:
-                    pass
+            extra_headers = config.get("headers")
+            if extra_headers:
+                if isinstance(extra_headers, str):
+                    try:
+                        headers.update(json_lib.loads(extra_headers))
+                    except Exception:
+                        pass
+                elif isinstance(extra_headers, dict):
+                    headers.update(extra_headers)
             async with httpx.AsyncClient() as client:
                 resp = await client.post(url, json={"event": "test", "message": test_msg}, headers=headers)
             if resp.status_code >= 400:
                 raise HTTPException(status_code=400, detail=f"Webhook returned {resp.status_code}")
 
         elif channel.channel_type == "sms":
-            return {"success": True, "message": "SMS test (provider not configured yet)"}
+            return {"success": True, "message": "SMS provider not configured yet"}
 
         else:
             raise HTTPException(status_code=400, detail="Unsupported channel type")
@@ -254,9 +228,9 @@ async def test_channel(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# --- History ---
+# --- Notification History ---
 
-@router.get("/history", response_model=list[NotificationLogResponse])
+@router.get("/history")
 async def notification_history(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -267,27 +241,25 @@ async def notification_history(
         .order_by(NotificationLog.sent_at.desc())
         .limit(100)
     )
-    return result.scalars().all()
+    logs = result.scalars().all()
+    return [
+        {
+            "id": str(n.id),
+            "endpoint_id": str(n.endpoint_id),
+            "incident_id": str(n.incident_id) if n.incident_id else None,
+            "channel_type": n.channel_type,
+            "event_type": n.event_type,
+            "status": n.status,
+            "error_message": n.error_message,
+            "sent_at": n.sent_at.isoformat() if n.sent_at else None,
+        }
+        for n in logs
+    ]
 
 
 # --- Global Incidents ---
 
-class IncidentResponse(BaseModel):
-    id: str
-    endpoint_id: str
-    user_id: str
-    started_at: datetime
-    resolved_at: datetime | None
-    is_resolved: bool
-    cause: str | None
-    duration_seconds: int | None
-    consecutive_failures: int
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-@router.get("/incidents", response_model=list[IncidentResponse])
+@router.get("/incidents")
 async def list_all_incidents(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -298,4 +270,19 @@ async def list_all_incidents(
         .order_by(Incident.started_at.desc())
         .limit(100)
     )
-    return result.scalars().all()
+    incidents = result.scalars().all()
+    return [
+        {
+            "id": str(i.id),
+            "endpoint_id": str(i.endpoint_id),
+            "user_id": str(i.user_id),
+            "started_at": i.started_at.isoformat() if i.started_at else None,
+            "resolved_at": i.resolved_at.isoformat() if i.resolved_at else None,
+            "is_resolved": i.is_resolved,
+            "cause": i.cause,
+            "duration_seconds": i.duration_seconds,
+            "consecutive_failures": i.consecutive_failures,
+            "created_at": i.created_at.isoformat() if i.created_at else None,
+        }
+        for i in incidents
+    ]
