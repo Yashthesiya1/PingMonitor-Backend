@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "PingMonitor"
     APP_URL: str = "https://ping.yashai.me"
     API_URL: str = "http://localhost:8000"
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "https://ping.yashai.me"]
+    CORS_ORIGINS: List[str] = ["http://localhost:3000", "https://ping.yashai.me","http://localhost:3001"]
 
     # Email
     RESEND_API_KEY: str = ""

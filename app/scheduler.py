@@ -14,6 +14,7 @@ from app.database import async_session
 from app.models.endpoint import Endpoint
 from app.models.check import EndpointCheck
 from app.models.incident import Incident
+from app.services.notification_dispatcher import dispatch_incident_notifications
 
 
 async def _ping_endpoint(endpoint, db: AsyncSession) -> None:
@@ -92,6 +93,7 @@ async def _ping_endpoint(endpoint, db: AsyncSession) -> None:
         if open_incident:
             open_incident.consecutive_failures += 1
         else:
+            # New incident — create and dispatch notifications
             incident = Incident(
                 endpoint_id=endpoint.id,
                 user_id=endpoint.user_id,
@@ -99,6 +101,20 @@ async def _ping_endpoint(endpoint, db: AsyncSession) -> None:
                 consecutive_failures=1,
             )
             db.add(incident)
+            await db.flush()  # Get the incident ID
+
+            # Dispatch DOWN notifications to user's channels
+            try:
+                await dispatch_incident_notifications(
+                    db=db,
+                    user_id=str(endpoint.user_id),
+                    endpoint_id=str(endpoint.id),
+                    incident_id=str(incident.id),
+                    event_type="endpoint_down",
+                    cause=error_message or f"HTTP {status_code}",
+                )
+            except Exception as e:
+                print(f"[Scheduler] Failed to dispatch DOWN notifications: {e}")
     else:
         # Endpoint is up — resolve any open incident
         result = await db.execute(
@@ -115,6 +131,19 @@ async def _ping_endpoint(endpoint, db: AsyncSession) -> None:
             open_incident.duration_seconds = int(
                 (now - open_incident.started_at).total_seconds()
             )
+
+            # Dispatch RECOVERY notifications to user's channels
+            try:
+                await dispatch_incident_notifications(
+                    db=db,
+                    user_id=str(endpoint.user_id),
+                    endpoint_id=str(endpoint.id),
+                    incident_id=str(open_incident.id),
+                    event_type="endpoint_recovered",
+                    duration_seconds=open_incident.duration_seconds,
+                )
+            except Exception as e:
+                print(f"[Scheduler] Failed to dispatch RECOVERY notifications: {e}")
 
 
 async def ping_all_endpoints() -> dict:
