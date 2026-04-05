@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -5,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import engine
+from app.scheduler import scheduler_loop
 from app.api.v1.auth import router as auth_router
 from app.api.v1.endpoints import router as endpoints_router
 from app.api.v1.notifications import router as notifications_router
@@ -13,9 +15,16 @@ from app.api.v1.admin import router as admin_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Tables are managed by Alembic migrations — no auto-create
-    print(f"{settings.APP_NAME} API started")
+    # Start the background scheduler (pings endpoints every minute)
+    scheduler_task = asyncio.create_task(scheduler_loop())
+    print(f"{settings.APP_NAME} API started — scheduler running")
     yield
+    # Cleanup on shutdown
+    scheduler_task.cancel()
+    try:
+        await scheduler_task
+    except asyncio.CancelledError:
+        pass
     await engine.dispose()
     print(f"{settings.APP_NAME} API shut down")
 
