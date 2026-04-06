@@ -4,6 +4,8 @@ from app.models.check import EndpointCheck
 from app.models.incident import Incident
 from app.models.notification import NotificationChannel, NotificationLog
 from app.models.team import Team, TeamMember, TeamInvite, ActivityLog
+from app.models.ssl_cert import SslCertificate
+from app.models.status_page import StatusPage, StatusPageEndpoint
 
 __all__ = [
     "User",
@@ -19,4 +21,7 @@ __all__ = [
     "TeamMember",
     "TeamInvite",
     "ActivityLog",
+    "SslCertificate",
+    "StatusPage",
+    "StatusPageEndpoint",
 ]

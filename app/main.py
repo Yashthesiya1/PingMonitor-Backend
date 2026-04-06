@@ -11,6 +11,9 @@ from app.api.v1.auth import router as auth_router
 from app.api.v1.endpoints import router as endpoints_router
 from app.api.v1.notifications import router as notifications_router
 from app.api.v1.admin import router as admin_router
+from app.api.v1.ssl import router as ssl_router
+from app.api.v1.status_pages import router as status_pages_router
+from app.api.public.status import router as public_status_router
 
 
 @asynccontextmanager
@@ -53,6 +56,9 @@ app.include_router(auth_router, prefix="/api/v1")
 app.include_router(endpoints_router, prefix="/api/v1")
 app.include_router(notifications_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
+app.include_router(ssl_router, prefix="/api/v1")
+app.include_router(status_pages_router, prefix="/api/v1")
+app.include_router(public_status_router, prefix="/api/v1")
 
 
 @app.get("/")
