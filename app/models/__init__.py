@@ -6,6 +6,7 @@ from app.models.notification import NotificationChannel, NotificationLog
 from app.models.team import Team, TeamMember, TeamInvite, ActivityLog
 from app.models.ssl_cert import SslCertificate
 from app.models.status_page import StatusPage, StatusPageEndpoint
+from app.models.support import SupportTicket, TicketMessage
 
 __all__ = [
     "User",
@@ -24,4 +25,6 @@ __all__ = [
     "SslCertificate",
     "StatusPage",
     "StatusPageEndpoint",
+    "SupportTicket",
+    "TicketMessage",
 ]

@@ -23,6 +23,9 @@ httpx>=0.28.0
 # Email
 resend>=2.5.0
 
+# AI Chat
+openai>=1.0.0
+
 # Validation & Config
 pydantic[email]>=2.10.0
 pydantic-settings>=2.7.0
