@@ -15,6 +15,7 @@ from app.api.v1.ssl import router as ssl_router
 from app.api.v1.status_pages import router as status_pages_router
 from app.api.public.status import router as public_status_router
 from app.api.v1.chat import router as chat_router
+from app.api.v1.support import router as support_router
 
 
 @asynccontextmanager
@@ -61,6 +62,7 @@ app.include_router(ssl_router, prefix="/api/v1")
 app.include_router(status_pages_router, prefix="/api/v1")
 app.include_router(public_status_router, prefix="/api/v1")
 app.include_router(chat_router, prefix="/api/v1")
+app.include_router(support_router, prefix="/api/v1")
 
 
 @app.get("/")
