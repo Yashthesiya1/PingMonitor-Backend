@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
 
+    # AI Chat (AICredits - OpenAI-compatible)
+    AI_API_KEY: str = ""
+    AI_API_BASE: str = "https://api.aicredits.in/v1"
+    AI_MODEL: str = "gpt-4o-mini"
+
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 60
 
