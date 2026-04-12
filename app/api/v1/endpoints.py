@@ -13,6 +13,7 @@ from app.models.incident import Incident
 from app.schemas.endpoint import (
     EndpointCreate,
     EndpointUpdate,
+    MaintenanceRequest,
     EndpointResponse,
     CheckResponse,
     IncidentResponse,
@@ -60,6 +61,11 @@ async def create_endpoint(
         monitor_type=body.monitor_type,
         check_interval=body.check_interval,
         monitor_region=body.monitor_region,
+        custom_headers=body.custom_headers,
+        custom_body=body.custom_body,
+        expected_status_code=body.expected_status_code,
+        keyword=body.keyword,
+        keyword_type=body.keyword_type,
     )
     db.add(endpoint)
     await db.commit()
@@ -104,6 +110,16 @@ async def update_endpoint(
         endpoint.check_interval = body.check_interval
     if body.monitor_region is not None:
         endpoint.monitor_region = body.monitor_region
+    if body.custom_headers is not None:
+        endpoint.custom_headers = body.custom_headers
+    if body.custom_body is not None:
+        endpoint.custom_body = body.custom_body
+    if body.expected_status_code is not None:
+        endpoint.expected_status_code = body.expected_status_code
+    if body.keyword is not None:
+        endpoint.keyword = body.keyword
+    if body.keyword_type is not None:
+        endpoint.keyword_type = body.keyword_type
 
     await db.commit()
     await db.refresh(endpoint)
@@ -126,6 +142,32 @@ async def delete_endpoint(
     await db.delete(endpoint)
     await db.commit()
     return {"message": "Endpoint deleted"}
+
+
+# --- Maintenance Window ---
+
+@router.put("/{endpoint_id}/maintenance")
+async def set_maintenance(
+    endpoint_id: str,
+    body: MaintenanceRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Endpoint).where(Endpoint.id == endpoint_id, Endpoint.user_id == user.id)
+    )
+    endpoint = result.scalar_one_or_none()
+    if not endpoint:
+        raise HTTPException(status_code=404, detail="Endpoint not found")
+
+    endpoint.maintenance_active = body.maintenance_active
+    endpoint.maintenance_start = body.maintenance_start
+    endpoint.maintenance_end = body.maintenance_end
+    endpoint.maintenance_reason = body.maintenance_reason
+
+    await db.commit()
+    await db.refresh(endpoint)
+    return {"message": "Maintenance window updated", "maintenance_active": endpoint.maintenance_active}
 
 
 @router.get("/{endpoint_id}/checks", response_model=list[CheckResponse])
