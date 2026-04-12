@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field
 from datetime import datetime
 
 
@@ -9,6 +9,13 @@ class EndpointCreate(BaseModel):
     monitor_type: str = "http"
     check_interval: int = Field(default=5, ge=1, le=60)
     monitor_region: str = "auto"
+    # Custom headers/body
+    custom_headers: str | None = None  # JSON string
+    custom_body: str | None = None  # JSON string
+    expected_status_code: int | None = None
+    # Keyword monitoring
+    keyword: str | None = None
+    keyword_type: str | None = None  # "contains" or "not_contains"
 
 
 class EndpointUpdate(BaseModel):
@@ -16,6 +23,18 @@ class EndpointUpdate(BaseModel):
     is_active: bool | None = None
     check_interval: int | None = Field(None, ge=1, le=60)
     monitor_region: str | None = None
+    custom_headers: str | None = None
+    custom_body: str | None = None
+    expected_status_code: int | None = None
+    keyword: str | None = None
+    keyword_type: str | None = None
+
+
+class MaintenanceRequest(BaseModel):
+    maintenance_active: bool
+    maintenance_start: datetime | None = None
+    maintenance_end: datetime | None = None
+    maintenance_reason: str | None = None
 
 
 class EndpointResponse(BaseModel):
@@ -28,6 +47,15 @@ class EndpointResponse(BaseModel):
     check_interval: int
     monitor_region: str
     is_active: bool
+    custom_headers: str | None
+    custom_body: str | None
+    expected_status_code: int | None
+    keyword: str | None
+    keyword_type: str | None
+    maintenance_active: bool
+    maintenance_start: datetime | None
+    maintenance_end: datetime | None
+    maintenance_reason: str | None
     created_at: datetime
     updated_at: datetime
 

@@ -20,5 +20,21 @@ class Endpoint(Base):
     check_interval: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
     monitor_region: Mapped[str] = mapped_column(String(30), nullable=False, default="auto")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    # Custom headers & body (for authenticated API monitoring)
+    custom_headers: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON string
+    custom_body: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON string
+    expected_status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Keyword monitoring
+    keyword: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    keyword_type: Mapped[str | None] = mapped_column(String(20), nullable=True)  # "contains" or "not_contains"
+
+    # Maintenance window
+    maintenance_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    maintenance_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    maintenance_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    maintenance_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

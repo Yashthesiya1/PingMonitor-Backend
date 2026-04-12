@@ -49,14 +49,52 @@ async def _ping_endpoint(endpoint: Endpoint, db: AsyncSession) -> dict:
                 except Exception:
                     is_up = resp.status_code < 400
             else:
+                # Build headers
+                headers = {"User-Agent": "PingMonitor/1.0"}
+                if endpoint.custom_headers:
+                    try:
+                        import json
+                        custom = json.loads(endpoint.custom_headers)
+                        headers.update(custom)
+                    except Exception:
+                        pass
+
+                # Build request kwargs
+                kwargs = {"headers": headers}
+                if endpoint.custom_body:
+                    try:
+                        import json
+                        kwargs["content"] = endpoint.custom_body
+                    except Exception:
+                        pass
+
                 resp = await client.request(
                     endpoint.method or "GET",
                     endpoint.url,
-                    headers={"User-Agent": "PingMonitor/1.0"},
+                    **kwargs,
                 )
                 status_code = resp.status_code
                 response_time_ms = int(resp.elapsed.total_seconds() * 1000)
-                is_up = 200 <= resp.status_code < 400
+
+                # Check expected status code
+                if endpoint.expected_status_code:
+                    is_up = resp.status_code == endpoint.expected_status_code
+                    if not is_up:
+                        error_message = f"Expected {endpoint.expected_status_code}, got {resp.status_code}"
+                else:
+                    is_up = 200 <= resp.status_code < 400
+
+                # Keyword monitoring
+                if is_up and endpoint.keyword:
+                    body_text = resp.text
+                    if endpoint.keyword_type == "contains":
+                        if endpoint.keyword not in body_text:
+                            is_up = False
+                            error_message = f"Keyword '{endpoint.keyword}' not found in response"
+                    elif endpoint.keyword_type == "not_contains":
+                        if endpoint.keyword in body_text:
+                            is_up = False
+                            error_message = f"Keyword '{endpoint.keyword}' found in response (should not be)"
 
     except httpx.TimeoutException:
         response_time_ms = 15000
@@ -131,8 +169,18 @@ async def _ping_all():
         if not endpoints:
             return {"checked": 0, "total": 0}
 
+        now = datetime.now(timezone.utc)
         results = []
         for endpoint in endpoints:
+            # Skip endpoints in active maintenance window
+            if endpoint.maintenance_active:
+                if endpoint.maintenance_end and endpoint.maintenance_end > now:
+                    continue  # Still in maintenance
+                else:
+                    # Maintenance window expired — auto-disable it
+                    endpoint.maintenance_active = False
+                    await db.commit()
+
             try:
                 r = await _ping_endpoint(endpoint, db)
                 results.append(r)
